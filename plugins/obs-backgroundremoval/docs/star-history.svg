@@ -1,0 +1,48 @@
+<!--
+SPDX-FileCopyrightText: 2026 Kaito Udagawa <umireon@kaito.tokyo>
+
+SPDX-License-Identifier: Apache-2.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="292" viewBox="0 0 800 292" role="img" aria-labelledby="title description">
+  <title id="title">GitHub star history</title>
+  <desc id="description">Cumulative GitHub stars by month, captured at 2026-08-30T09:02:34.506Z.</desc>
+  <defs>
+    <clipPath id="chart-clip"><rect x="90" y="16" width="682" height="210"/></clipPath>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e4c663" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#e4c663" stop-opacity="0.03"/>
+    </linearGradient>
+    <style>
+      .background { fill: #ffffff; }
+      .grid { shape-rendering: crispEdges; stroke: #d0d7de; stroke-opacity: 0.55; }
+      .axis { shape-rendering: crispEdges; stroke: #8c959f; }
+      .date, .tick-label, .generated-at { fill: #57606a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+      .date { font-size: 12px; } .tick-label { font-size: 11px; } .generated-at { font-size: 10px; }
+      .axis-title { fill: #24292f; font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", "Noto Sans", sans-serif; font-size: 22px; font-style: italic; font-weight: bold; }
+      .trend { stroke: #e4c663; }
+      @media (prefers-color-scheme: dark) {
+        .background { fill: #0d1117; } .grid { stroke: #30363d; stroke-opacity: 0.8; } .axis { stroke: #6e7681; }
+        .date, .tick-label, .generated-at { fill: #8c959f; } .axis-title { fill: #c9d1d9; }
+        .trend { stroke: #dcb556; }
+        #area stop:first-child, #area stop:last-child { stop-color: #dcb556; }
+      }
+    </style>
+  </defs>
+  <rect class="background" width="800" height="292" rx="6"/>
+  <path class="grid" fill="none" vector-effect="non-scaling-stroke" d="M90 226H772 M90 184H772 M90 142H772 M90 100H772 M90 58H772 M90 16H772"/>
+  <g clip-path="url(#chart-clip)">
+    <path fill="url(#area)" d="M90 226 L90.0 224.9 L100.3 222.4 L111.0 221.0 L121.4 220.0 L132.1 219.2 L142.8 216.9 L153.1 214.7 L163.8 211.3 L174.2 208.9 L184.8 205.9 L195.5 192.9 L205.2 188.8 L215.9 186.3 L226.2 183.9 L236.9 181.6 L247.3 180.1 L258.0 178.2 L268.7 176.6 L279.0 175.3 L289.7 173.8 L300.0 172.1 L310.7 170.5 L321.4 169.0 L331.1 166.7 L341.8 163.6 L352.1 160.3 L362.8 157.1 L373.2 154.0 L383.9 150.7 L394.5 147.0 L404.9 143.7 L415.6 140.1 L425.9 137.3 L436.6 133.6 L447.3 130.4 L457.3 127.0 L468.0 123.6 L478.4 120.7 L489.1 117.5 L499.4 115.0 L510.1 112.3 L520.8 109.4 L531.1 106.5 L541.8 103.6 L552.2 100.9 L562.9 98.3 L573.6 96.2 L583.2 93.4 L593.9 91.6 L604.2 88.6 L614.9 78.9 L625.3 74.0 L636.0 71.5 L646.7 69.0 L657.0 65.9 L667.7 62.4 L678.1 59.3 L688.7 56.1 L699.4 53.5 L709.1 50.3 L719.8 47.7 L730.1 44.9 L740.8 42.0 L751.2 39.5 L772.0 37.1 L772 226Z"/>
+    <path class="trend" fill="none" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" d="M90.0 224.9 L100.3 222.4 L111.0 221.0 L121.4 220.0 L132.1 219.2 L142.8 216.9 L153.1 214.7 L163.8 211.3 L174.2 208.9 L184.8 205.9 L195.5 192.9 L205.2 188.8 L215.9 186.3 L226.2 183.9 L236.9 181.6 L247.3 180.1 L258.0 178.2 L268.7 176.6 L279.0 175.3 L289.7 173.8 L300.0 172.1 L310.7 170.5 L321.4 169.0 L331.1 166.7 L341.8 163.6 L352.1 160.3 L362.8 157.1 L373.2 154.0 L383.9 150.7 L394.5 147.0 L404.9 143.7 L415.6 140.1 L425.9 137.3 L436.6 133.6 L447.3 130.4 L457.3 127.0 L468.0 123.6 L478.4 120.7 L489.1 117.5 L499.4 115.0 L510.1 112.3 L520.8 109.4 L531.1 106.5 L541.8 103.6 L552.2 100.9 L562.9 98.3 L573.6 96.2 L583.2 93.4 L593.9 91.6 L604.2 88.6 L614.9 78.9 L625.3 74.0 L636.0 71.5 L646.7 69.0 L657.0 65.9 L667.7 62.4 L678.1 59.3 L688.7 56.1 L699.4 53.5 L709.1 50.3 L719.8 47.7 L730.1 44.9 L740.8 42.0 L751.2 39.5 L772.0 37.1"/>
+  </g>
+  <path class="axis" fill="none" vector-effect="non-scaling-stroke" d="M90 16V226H772"/>
+  <text class="tick-label" x="82" y="226" text-anchor="end" dominant-baseline="middle">0</text>
+  <text class="tick-label" x="82" y="184" text-anchor="end" dominant-baseline="middle">1,000</text>
+  <text class="tick-label" x="82" y="142" text-anchor="end" dominant-baseline="middle">2,000</text>
+  <text class="tick-label" x="82" y="100" text-anchor="end" dominant-baseline="middle">3,000</text>
+  <text class="tick-label" x="82" y="58" text-anchor="end" dominant-baseline="middle">4,000</text>
+  <text class="tick-label" x="82" y="16" text-anchor="end" dominant-baseline="middle">5,000</text>
+  <text class="generated-at" x="104" y="36">Generated at 2026-08-30T09:02:34.506Z</text>
+  <text class="date" x="90" y="246" text-anchor="end" transform="rotate(-60 90 246)">2021-04</text>
+  <text class="date" x="772" y="246" text-anchor="end" transform="rotate(-60 772 246)">2026-08</text>
+  <text class="axis-title" x="428" y="272" text-anchor="middle">Star history for royshil/obs-backgroundremoval</text>
+</svg>

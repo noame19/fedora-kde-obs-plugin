@@ -1,0 +1,31 @@
+# 编译产物（不应该提交，每个插件自己的 CMakeLists.txt 也定义了 .gitignore 但兜底这里再挡一层）
+build/
+build_*/
+*.o
+*.so
+*.a
+
+# CMake / Ninja 临时文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# 各种 IDE / 编辑器临时文件
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 操作系统临时
+*~
+*.bak
+*.tmp
+
+# 用户特定的本地脚本（如果以后加 build 脚本）
+local/
+*.local

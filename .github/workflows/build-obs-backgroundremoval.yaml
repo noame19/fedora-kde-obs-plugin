@@ -1,0 +1,135 @@
+name: Build obs-backgroundremoval for Fedora Linux 44
+
+# 在 fedora:44 容器里编译 obs-backgroundremoval 1.5.x，编译产物 ABI
+# 100% 匹配用户本地 Fedora 44（libobs.so.30 / onnxruntime 1.22 / opencv 4.x）。
+#
+# 总仓库 layout：插件源码在 plugins/obs-backgroundremoval/ 子目录。
+# cmake install 用 UserPlugin 组件直接产出标准布局，无需手动 cp data/。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on Fedora 44 container
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:44
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLUGIN_SRC: plugins/obs-backgroundremoval
+      PLUGIN_NAME: obs-backgroundremoval
+    steps:
+      - name: 安装 git（fedora:44 镜像默认没装）
+        run: dnf install -y --setopt=install_weak_deps=False git
+
+      - name: 启用 RPM Fusion 并安装构建依赖
+        run: |
+          set -euxo pipefail
+          dnf install -y --setopt=install_weak_deps=False \
+            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm"
+
+          dnf install -y --setopt=install_weak_deps=False \
+            cmake gcc-c++ ninja-build pkgconf-pkg-config \
+            obs-studio-devel \
+            opencv-devel \
+            onnxruntime-devel \
+            qt6-qtbase-devel \
+            libcurl-devel \
+            flatbuffers-devel \
+            protobuf-compiler
+
+          test -f /usr/include/obs/obs.h                          || { echo "❌ 缺 obs.h"; exit 1; }
+          test -f /usr/include/onnxruntime/core/session/onnxruntime_cxx_api.h \
+            || test -f /usr/include/onnxruntime/onnxruntime_cxx_api.h \
+            || { echo "❌ 缺 onnxruntime 头文件"; find /usr/include -name 'onnxruntime*.h' 2>/dev/null | head -5; exit 1; }
+          test -f /usr/include/opencv4/opencv2/core.hpp            || { echo "❌ 缺 opencv2/core.hpp"; exit 1; }
+          test -f /usr/include/qt6/QtWidgets/QtWidgets            || { echo "❌ 缺 Qt6 Widgets"; exit 1; }
+
+          echo "=== 关键包版本 ==="
+          rpm -q obs-studio-devel opencv onnxruntime-devel qt6-qtbase-devel cmake gcc-c++
+
+      - name: CMake configure（直接 cmake -S -B，与上游风格一致）
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX=/tmp/install-system \
+            -DCPACK_GENERATOR=DEB \
+            -DPACKAGE_VERSION_SUFFIX=-fedora44-1
+
+      - name: CMake build
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --build build --config RelWithDebInfo --parallel
+
+      - name: CMake install（用 UserPlugin 组件）
+        run: |
+          set -euxo pipefail
+          STAGE=/tmp/stage
+          rm -rf "$STAGE"
+          # --prefix 加上 plugin name 作为顶层目录，让 tar 包名稳定
+          # 产物：/tmp/stage/obs-backgroundremoval/{bin/64bit,data/effects,data/locale,data/models}
+          cmake --install "$PLUGIN_SRC/build" --component UserPlugin --prefix "$STAGE/$PLUGIN_NAME"
+          echo
+          echo "=== install 出来的目录树 ==="
+          find "$STAGE" -mindepth 1 | sort
+
+      - name: 打包成 tar.gz
+        run: |
+          set -euxo pipefail
+          tar -C /tmp/stage -czf "/tmp/${PLUGIN_NAME}-fedora44-x86_64.tar.gz" "$PLUGIN_NAME"
+          ls -la "/tmp/${PLUGIN_NAME}-fedora44-x86_64.tar.gz"
+
+      - name: 验证打包产物的 ABI（必须匹配 Fedora 44）
+        run: |
+          set -euxo pipefail
+          VERIFY=/tmp/verify
+          rm -rf "$VERIFY" && mkdir -p "$VERIFY"
+          tar -xzf "/tmp/${PLUGIN_NAME}-fedora44-x86_64.tar.gz" -C "$VERIFY"
+          SO="$VERIFY/$PLUGIN_NAME/bin/64bit/${PLUGIN_NAME}.so"
+          test -f "$SO" || { echo "❌ 找不到 .so"; exit 1; }
+          chmod +x "$SO"
+
+          echo "=== DT_NEEDED（应包含 libobs.so.30、onnxruntime、opencv 等） ==="
+          objdump -p "$SO" | grep -E "NEEDED"
+
+          echo
+          echo "=== ldd 命中检查（关键库必须命中 /lib64/） ==="
+          ldd "$SO" 2>&1
+
+          echo
+          echo "=== 关键 soname 断言 ==="
+          NEEDED=$(objdump -p "$SO" | awk '/NEEDED/ {print $2}')
+          for lib in libobs.so.30 libobs-frontend-api.so.30; do
+            if echo "$NEEDED" | grep -qx "$lib"; then
+              echo "  ✅ $lib 在 DT_NEEDED 中"
+            else
+              echo "  ❌ $lib 不在 DT_NEEDED（预期应该有）"
+              exit 1
+            fi
+          done
+          if ldd "$SO" 2>&1 | grep -q "not found"; then
+            echo "❌ ldd 发现未命中的库（ABI 不兼容）："
+            ldd "$SO" 2>&1 | grep "not found"
+            exit 1
+          fi
+          echo "✅ ldd 全部命中（ABI 与 Fedora 44 兼容）"
+          echo
+          echo "🎉 全部通过——编译产物 ABI 与 Fedora 44 匹配"
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-backgroundremoval-fedora44-x86_64
+          path: /tmp/obs-backgroundremoval-fedora44-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 14

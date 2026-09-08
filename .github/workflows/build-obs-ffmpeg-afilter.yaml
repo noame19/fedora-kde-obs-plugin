@@ -1,0 +1,162 @@
+name: Build obs-ffmpeg-afilter for Fedora Linux 44
+
+# 在 fedora:44 容器里编译 obs-ffmpeg-afilter，编译产物 ABI 100% 匹配
+# 用户本地 Fedora 44（libobs.so.30 / ffmpeg 8.x）。
+#
+# 与 fork 仓库里的 build-fedora.yaml 的关键区别：
+# - 总仓库 layout：插件源码在 plugins/obs-ffmpeg-afilter/ 子目录
+# - checkout 默认就在根目录，不需要 ref
+# - cmake configure/build/install 全部加 `plugins/obs-ffmpeg-afilter` 前缀
+# - 重新打包阶段：直接指向 data/ 子目录，避免把 bin/ 拷进 data/data/
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on Fedora 44 container
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:44
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLUGIN_SRC: plugins/obs-ffmpeg-afilter
+      PLUGIN_NAME: obs-ffmpeg-afilter
+    steps:
+      - name: 安装 git（fedora:44 镜像默认没装）
+        run: dnf install -y --setopt=install_weak_deps=False git
+
+      - name: 拉取源码
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 启用 RPM Fusion Free 并安装构建依赖
+        run: |
+          set -euxo pipefail
+          dnf install -y --setopt=install_weak_deps=False \
+            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-44.noarch.rpm"
+
+          dnf install -y --setopt=install_weak_deps=False \
+            cmake gcc-c++ ninja-build pkg-config \
+            obs-studio-devel ffmpeg-devel
+
+          test -f /usr/include/obs/obs.h                          || { echo "❌ 缺 obs.h"; exit 1; }
+          test -f /usr/include/ffmpeg/libavfilter/avfilter.h      || { echo "❌ 缺 avfilter.h"; exit 1; }
+          test -f /usr/include/ffmpeg/libavutil/avutil.h          || { echo "❌ 缺 avutil.h"; exit 1; }
+          test -f /usr/include/ffmpeg/libavformat/avformat.h      || { echo "❌ 缺 avformat.h"; exit 1; }
+
+          echo "=== 装上的关键包 ==="
+          rpm -q obs-studio-devel ffmpeg-devel cmake gcc-c++ ninja-build
+
+      - name: 把 ffmpeg 头文件软链到默认搜索路径
+        run: |
+          set -euxo pipefail
+          # Fedora ffmpeg-devel 把头文件装在 /usr/include/ffmpeg/libav*/，
+          # 但 plugin 的 CMakeLists.txt 用了 find_path(avformat.h PATHS include)，
+          # 找不到 Fedora 布局。把头文件软链到 /usr/include/ 让默认 find_path 命中。
+          for d in libavutil libavfilter libavformat libavcodec libswresample libswscale; do
+            ln -sf "/usr/include/ffmpeg/$d" "/usr/include/$d"
+          done
+          ls -la /usr/include/libavutil/avutil.h /usr/include/libavfilter/avfilter.h
+
+      - name: CMake configure（用上游 linux-x86_64 preset）
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --preset linux-x86_64 \
+            -DCMAKE_INSTALL_PREFIX=/tmp/install-system
+
+      - name: CMake build
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --build build_x86_64 --config RelWithDebInfo --parallel
+
+      - name: CMake install
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --install build_x86_64 --config RelWithDebInfo --prefix /tmp/install-system
+
+      - name: 重新打包为用户级插件目录布局
+        run: |
+          set -euxo pipefail
+          STAGE=/tmp/stage
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/$PLUGIN_NAME/bin/64bit" "$STAGE/$PLUGIN_NAME/data/locale"
+
+          # 找编译产物 .so
+          SO=$(find /tmp/install-system -name "${PLUGIN_NAME}.so" -type f | head -1)
+          test -n "$SO" || { echo "❌ 找不到 ${PLUGIN_NAME}.so"; exit 1; }
+          cp -v "$SO" "$STAGE/$PLUGIN_NAME/bin/64bit/${PLUGIN_NAME}.so"
+
+          # 数据文件（locale 等）。直接定位 <install>/obs/obs-plugins/<plugin>/data 子目录，
+          # 把里面的内容（比如 data/locale/zh-CN.ini）原样拷到 $STAGE/<plugin>/data/ 下，
+          # 避免出现 $STAGE/<plugin>/data/data/locale/ 这种错位的层级。
+          DATA_SRC=$(find /tmp/install-system -path "*/obs/obs-plugins/$PLUGIN_NAME/data" -type d | head -1)
+          if [ -n "$DATA_SRC" ]; then
+            cp -r "$DATA_SRC/." "$STAGE/$PLUGIN_NAME/data/"
+          else
+            echo "ℹ️  install 没产出 data/ 目录，只打包 .so"
+          fi
+
+          # 占位英文 locale，避免 OBS 启动报缺文件
+          touch "$STAGE/$PLUGIN_NAME/data/locale/en-US.ini"
+
+          echo "=== 打包前目录结构 ==="
+          find "$STAGE" -mindepth 1 | sort
+
+          tar -C "$STAGE" -czf "${PLUGIN_NAME}-fedora44-x86_64.tar.gz" "$PLUGIN_NAME"
+          ls -la "${PLUGIN_NAME}-fedora44-x86_64.tar.gz"
+
+      - name: 验证打包产物的 ABI（必须匹配 Fedora 44）
+        run: |
+          set -euxo pipefail
+          VERIFY=/tmp/verify
+          rm -rf "$VERIFY" && mkdir -p "$VERIFY"
+          tar -xzf "${PLUGIN_NAME}-fedora44-x86_64.tar.gz" -C "$VERIFY"
+          SO="$VERIFY/$PLUGIN_NAME/bin/64bit/${PLUGIN_NAME}.so"
+          test -f "$SO" || { echo "❌ 找不到 .so"; exit 1; }
+          chmod +x "$SO"
+
+          echo "=== DT_NEEDED ==="
+          objdump -p "$SO" | grep -E "NEEDED"
+
+          echo
+          echo "=== ldd 命中检查 ==="
+          ldd "$SO" 2>&1
+
+          echo
+          echo "=== 关键 soname 断言 ==="
+          NEEDED=$(objdump -p "$SO" | awk '/NEEDED/ {print $2}')
+          for lib in libobs.so.30 libavutil.so.60 libavfilter.so.11; do
+            if echo "$NEEDED" | grep -qx "$lib"; then
+              echo "  ✅ $lib 在 DT_NEEDED 中"
+            else
+              echo "  ⚠️  $lib 不在 DT_NEEDED（可能不直接依赖，但 ffmpeg 8.x 应该都有）"
+            fi
+          done
+
+          # ldd 必须全部命中
+          if ldd "$SO" 2>&1 | grep -q "not found"; then
+            echo "❌ ldd 发现未命中的库（ABI 不兼容）："
+            ldd "$SO" 2>&1 | grep "not found"
+            exit 1
+          fi
+          echo "✅ ldd 全部命中（ABI 与 Fedora 44 兼容）"
+          echo
+          echo "🎉 全部通过——编译产物 ABI 与 Fedora 44 匹配"
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-ffmpeg-afilter-fedora44-x86_64
+          path: obs-ffmpeg-afilter-fedora44-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 14

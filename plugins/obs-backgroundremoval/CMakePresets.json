@@ -1,0 +1,62 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "macos-arm64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "binaryDir": "build",
+      "generator": "Xcode",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/.deps/obs-deps;${sourceDir}/.deps/obs-deps-qt6;${sourceDir}/obs_installed;${sourceDir}/obs_installed/Frameworks;${sourceDir}/vcpkg_ort_installed/arm64-osx-obs-ort;${sourceDir}/ort_installed;${sourceDir}/vcpkg_installed/arm64-osx-obs"
+      },
+      "warnings": {
+        "dev": false
+      }
+    },
+    {
+      "name": "linux-outtree",
+      "condition": {
+        "type": "allOf",
+        "conditions": [
+          {
+            "type": "notEquals",
+            "lhs": "$env{PLUGIN_BUILD_DIR}",
+            "rhs": ""
+          },
+          {
+            "type": "equals",
+            "lhs": "${hostSystemName}",
+            "rhs": "Linux"
+          }
+        ]
+      },
+      "binaryDir": "$env{PLUGIN_BUILD_DIR}/build",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+      },
+      "warnings": {
+        "dev": false
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "macos-arm64",
+      "configurePreset": "macos-arm64",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "linux",
+      "configurePreset": "linux-outtree",
+      "configuration": "Release"
+    }
+  ]
+}
