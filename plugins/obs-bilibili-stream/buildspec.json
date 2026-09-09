@@ -1,4 +1,4 @@
-﻿{
+{
     "dependencies": {
         "obs-studio": {
             "version": "31.1.1",
@@ -36,7 +36,7 @@
             "bundleId": "com.example.plugintemplate-for-obs"
         }
     },
-    "name": "bilibili-stream-for-obs",
+    "name": "obs-bilibili-stream",
     "displayName": "BILIBILI Stream for OBS",
     "version": "2.1.5",
     "author": "Zaros",
