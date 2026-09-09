@@ -55,12 +55,25 @@ jobs:
         run: |
           set -euxo pipefail
           LOCAL_ZHCN="$GITHUB_WORKSPACE/plugins/obs-ffmpeg-afilter/data/locale/zh-CN.ini"
-          BUILD_ZHCN_DIR="/tmp/build/plugins/obs-ffmpeg-afilter/data/locale"
+          BUILD_LOCALE_DIR="/tmp/build/plugins/obs-ffmpeg-afilter/data/locale"
           test -f "$LOCAL_ZHCN" || { echo "❌ 本仓库没有 $LOCAL_ZHCN"; exit 1; }
-          mkdir -p "$BUILD_ZHCN_DIR"
-          cp -v "$LOCAL_ZHCN" "$BUILD_ZHCN_DIR/zh-CN.ini"
-          echo "=== 汉化备份大小 ==="
-          wc -c "$LOCAL_ZHCN" "$BUILD_ZHCN_DIR/zh-CN.ini"
+          mkdir -p "$BUILD_LOCALE_DIR"
+          cp -v "$LOCAL_ZHCN" "$BUILD_LOCALE_DIR/zh-CN.ini"
+
+          # 关键修复：OBS 加载 locale 时先尝试 en-US.ini（默认 locale），
+          # 如果加载失败会直接 goto cleanup，根本不会去叠加 zh-CN.ini。
+          # 上游 en-US.ini 是 0 字节，text_lookup_create 加载空文件返回 NULL。
+          # 这里写一个最小有效内容，保证 en-US lookup 创建成功。
+          cat > "$BUILD_LOCALE_DIR/en-US.ini" << 'ENEOF'
+Description=FFMPEG Audio Filters
+Filter=Filter
+FilterName=FFMPEG Audio Filters
+ENEOF
+
+          echo "=== locale 文件 ==="
+          ls -la "$BUILD_LOCALE_DIR/"
+          echo "=== en-US.ini 内容（必须非空） ==="
+          cat "$BUILD_LOCALE_DIR/en-US.ini"
 
       - name: 启用 RPM Fusion Free 并安装构建依赖
         run: |
