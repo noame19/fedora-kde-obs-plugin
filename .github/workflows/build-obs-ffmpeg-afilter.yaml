@@ -9,7 +9,7 @@ name: Build obs-ffmpeg-afilter for Fedora Linux 44
 # - cmake configure/build/install 全部加 `plugins/obs-ffmpeg-afilter` 前缀
 # - 重新打包阶段：直接指向 data/ 子目录，避免把 bin/ 拷进 data/data/
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:

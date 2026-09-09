@@ -6,7 +6,7 @@ name: Build obs-backgroundremoval for Fedora Linux 44
 # 总仓库 layout：插件源码在 plugins/obs-backgroundremoval/ 子目录。
 # cmake install 用 UserPlugin 组件直接产出标准布局，无需手动 cp data/。
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:

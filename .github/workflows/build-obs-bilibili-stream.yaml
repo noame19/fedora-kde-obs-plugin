@@ -8,7 +8,7 @@ name: Build obs-bilibili-stream for Fedora Linux 44
 # 所以编译出的 .so 是 bilibili-stream-for-obs.so（不是 obs-bilibili-stream.so）。
 # cmake install 没有 UserPlugin 组件，data/locale/ 要从源码拷贝。
 
-on:
+"on":
   workflow_dispatch:
 
 permissions:
