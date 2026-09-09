@@ -29,7 +29,7 @@ jobs:
         shell: bash
     steps:
       - name: 安装 git（fedora:44 镜像默认没装）
-        run: dnf install -y --setopt=install_weak_deps=False git
+        run: dnf install -y --setopt=install_weak_deps=False git python3
 
       - name: 拉取上游源码到容器内（不接触本仓库 plugins/ 目录）
         run: |
