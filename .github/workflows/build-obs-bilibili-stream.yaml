@@ -28,6 +28,10 @@ jobs:
       PLUGIN_NAME: obs-bilibili-stream
       SO_NAME: bilibili-stream-for-obs
     steps:
+      - name: 拉取源码
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: 安装 git（fedora:44 镜像默认没装）
         run: dnf install -y --setopt=install_weak_deps=False git
 

@@ -12,6 +12,7 @@
 #include <numeric>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 
 extern "C" {
@@ -28,9 +29,20 @@ extern "C" {
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("obs-ffmpeg-afilters", "en-US");
 
+// ========== localization fallback
+// obs_module_text() 找不到 key 时返回 key 自身（会暴露"Filter_volume"之类
+// 的内部键给用户）。这里加一层包装：有翻译用翻译，没翻译用 fallback。
+static const char *localize_or(const char *key, const char *fallback)
+{
+	const char *translated = obs_module_text(key);
+	if (translated && strcmp(translated, key) != 0)
+		return translated;
+	return fallback;
+}
+
 MODULE_EXPORT const char *obs_module_description(void)
 {
-	return "FFMPEG Audio Filters";
+	return localize_or("Description", "FFMPEG Audio Filters");
 }
 
 using namespace std;
@@ -272,7 +284,7 @@ public:
 
 	static const char *Name(void *type_data)
 	{
-		return "FFMPEG AudioFilter";
+		return localize_or("FilterName", "FFMPEG AudioFilter");
 	}
 
 	static const char *Id() { return "ffmpeg-audio-filter"; }
@@ -445,14 +457,14 @@ static bool obs_property_set_visible(obs_properties *props,
 void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 				    const obs_audio_info &oai) const
 {
-	auto obs_properties_add_int_unit = [&](obs_properties *props, const Opt &opt, const string &optname) {
+	auto obs_properties_add_int_unit = [&](obs_properties *props, const Opt &opt, const string &optname, const char *opt_label) {
 		auto unit = opt.units;
-		auto prop = obs_properties_add_list(props, optname.c_str(), opt.name,
+		auto prop = obs_properties_add_list(props, optname.c_str(), opt_label,
 			obs_combo_type::OBS_COMBO_TYPE_LIST, obs_combo_format::OBS_COMBO_FORMAT_INT);
 		
 		for (auto x : *unit) {
 			string itemstr;
-			itemstr += x.name;
+			itemstr += localize_or(("Param_" + string(x.name)).c_str(), x.name);
 			if (x.help) {
 				itemstr += ": ";
 				itemstr += x.help;
@@ -462,7 +474,8 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 	};
 
 	auto obs_properties_add_flags = [&](const Opt &opt,
-					    const string &optname) {
+					    const string &optname,
+					    const char *opt_label) {
 		auto units = opt.units;
 		for (auto x : *units) {
 			string flagname;
@@ -471,12 +484,12 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 			flagname += x.name;
 
 			string flaghelp;
-			flaghelp += opt.name;
+			flaghelp += opt_label;
 			flaghelp += ": ";
 			if (x.help && *x.help)
 				flaghelp += x.help;
 			else
-				flaghelp += x.name;
+				flaghelp += localize_or(("Param_" + string(x.name)).c_str(), x.name);
 
 			if (obs_property_set_visible(props, flagname))
 				continue;
@@ -494,22 +507,24 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 	};
 
 	auto obs_property_list_add_chlayout = [&](const Opt &opt,
-						  const string &optname) {
+						  const string &optname,
+						  const char *opt_label) {
 		auto prop = obs_properties_add_list(
-			props, optname.c_str(), opt.name,
+			props, optname.c_str(), opt_label,
 			obs_combo_type::OBS_COMBO_TYPE_LIST,
 			obs_combo_format::OBS_COMBO_FORMAT_STRING);
-		obs_property_list_add_string(prop, "Mono", to_string(AV_CHANNEL_LAYOUT_MONO).c_str());
-		obs_property_list_add_string(prop, "Stereo", to_string(AV_CH_LAYOUT_STEREO).c_str());
-		obs_property_list_add_string(prop, "2.1", to_string(AV_CH_LAYOUT_2POINT1).c_str());
-		obs_property_list_add_string(prop, "4.0", to_string(AV_CH_LAYOUT_4POINT0).c_str());
-		obs_property_list_add_string(prop, "4.1", to_string(AV_CH_LAYOUT_4POINT1).c_str());
-		obs_property_list_add_string(prop, "5.1", to_string(AV_CH_LAYOUT_5POINT1).c_str());
-		obs_property_list_add_string(prop, "7.1", to_string(AV_CH_LAYOUT_7POINT1).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_Mono", "Mono"), to_string(AV_CHANNEL_LAYOUT_MONO).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_Stereo", "Stereo"), to_string(AV_CH_LAYOUT_STEREO).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_2POINT1", "2.1"), to_string(AV_CH_LAYOUT_2POINT1).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_4POINT0", "4.0"), to_string(AV_CH_LAYOUT_4POINT0).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_4POINT1", "4.1"), to_string(AV_CH_LAYOUT_4POINT1).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_5POINT1", "5.1"), to_string(AV_CH_LAYOUT_5POINT1).c_str());
+		obs_property_list_add_string(prop, localize_or("ChLayout_7POINT1", "7.1"), to_string(AV_CH_LAYOUT_7POINT1).c_str());
 	};
 
 	auto obs_properties_add_regular_type = [&](const Opt &opt,
-						   auto_adapt_string optname) {
+						   auto_adapt_string optname,
+						   const char *opt_label) {
 		if (obs_property_set_visible(props, optname))
 			return true;
 
@@ -519,7 +534,7 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 		    opt.type == AV_OPT_TYPE_DOUBLE ||
 		    opt.type == AV_OPT_TYPE_DURATION) {
 			prop = obs_properties_add_float(props, optname,
-							opt.name, opt.min,
+							opt_label, opt.min,
 							opt.max, 0.1);
 			obs_data_set_default_double(settings, optname,
 						    opt.default_val.dbl);
@@ -527,27 +542,27 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 			   opt.type == AV_OPT_TYPE_INT64) {
 			if (opt.units) {
 				obs_properties_add_int_unit(props, opt,
-							    optname);
+							    optname, opt_label);
 			} else {
 				prop = obs_properties_add_int(props, optname,
-							      opt.name, opt.min,
+							      opt_label, opt.min,
 							      opt.max, 1);
 			}
 			obs_data_set_default_int(settings, optname,
 						 opt.default_val.i64);
 		} else if (opt.type == AV_OPT_TYPE_STRING) {
 			prop = obs_properties_add_text(
-				props, optname, opt.name,
+				props, optname, opt_label,
 				obs_text_type::OBS_TEXT_DEFAULT);
 			obs_data_set_default_string(settings, optname,
 						    opt.default_val.str);
 		} else if (opt.type == AV_OPT_TYPE_BOOL) {
 			prop = obs_properties_add_bool(props, optname,
-						       opt.name);
+						       opt_label);
 			obs_data_set_default_bool(settings, optname,
 						  opt.default_val.i64);
 		} else if (opt.type == AV_OPT_TYPE_CHLAYOUT) {
-			obs_property_list_add_chlayout(opt, optname);
+			obs_property_list_add_chlayout(opt, optname, opt_label);
 			obs_data_set_default_string(settings, optname, to_string(speaker_layout_to_av_ch_layout(oai.speakers)).c_str());
 		} else {
 			blog(LOG_WARNING, TAG "unsupport type %d for %s",
@@ -560,16 +575,20 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 	};
 
 	for (auto &opt : opts_) {
-		// construct option name
+		// construct option name (settings key，不能本地化)
 		auto_adapt_string optname = filter_name_ + "/" + opt.name;
+
+		// 本地化参数显示标签：先查 Param_<ffmpeg-opt-name>，找不到用原始英文名
+		std::string opt_label_key = "Param_" + std::string(opt.name);
+		const char *opt_label = localize_or(opt_label_key.c_str(), opt.name);
 
 		obs_property *prop = nullptr;
 
 		// add property in correct type
 		if (opt.type == AV_OPT_TYPE_FLAGS && opt.units)
-			obs_properties_add_flags(opt, optname);
+			obs_properties_add_flags(opt, optname, opt_label);
 		else
-			obs_properties_add_regular_type(opt, optname);
+			obs_properties_add_regular_type(opt, optname, opt_label);
 	}
 }
 
@@ -933,9 +952,13 @@ obs_properties_t *FFAFilter::properties()
 		obs_combo_type::OBS_COMBO_TYPE_LIST,
 		obs_combo_format::OBS_COMBO_FORMAT_STRING);
 
-	for (auto &x : FFAFilterCollection::Get())
-		obs_property_list_add_string(filterlist, x.first.c_str(),
-					     x.first.c_str());
+	for (auto &x : FFAFilterCollection::Get()) {
+		// 本地化下拉项显示名：先查 Filter_<ffmpeg-name>，找不到用 ffmpeg 原始名
+		const char *ffmpeg_name = x.first.c_str();
+		std::string filter_label_key = std::string("Filter_") + ffmpeg_name;
+		const char *display = localize_or(filter_label_key.c_str(), ffmpeg_name);
+		obs_property_list_add_string(filterlist, display, ffmpeg_name);
+	}
 
 	auto callback = [](obs_properties_t *props, obs_property_t *property,
 			   obs_data_t *settings) -> bool {
