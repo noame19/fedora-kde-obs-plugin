@@ -101,7 +101,7 @@ jobs:
           # 避免出现 $STAGE/<plugin>/data/data/locale/ 这种错位的层级。
           DATA_SRC=$(find /tmp/install-system -path "*/obs/obs-plugins/$PLUGIN_NAME/locale" -type d | head -1)
           if [ -n "$DATA_SRC" ]; then
-            cp -r "$DATA_SRC" "$STAGE/$PLUGIN_NAME/data/locale"
+            cp -r "$DATA_SRC/." "$STAGE/$PLUGIN_NAME/data/locale/"
           else
             echo "ℹ️  install 没产出 data/ 目录，只打包 .so"
           fi
