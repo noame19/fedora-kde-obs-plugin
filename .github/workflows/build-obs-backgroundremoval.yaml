@@ -77,40 +77,24 @@ jobs:
           cmake -S . -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/tmp/install-system \
+            -DCMAKE_INSTALL_PREFIX=/tmp/stage/obs-backgroundremoval \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: CMake build
         working-directory: /tmp/build/plugins/obs-backgroundremoval
         run: cmake --build build --parallel
 
-      - name: CMake install（用 UserPlugin 组件，上游已定义）
+      - name: CMake install（用 UserPlugin 组件，直接装到 stage 子目录）
         working-directory: /tmp/build/plugins/obs-backgroundremoval
-        run: |
-          set -euxo pipefail
-          cmake --install build --component UserPlugin --prefix /tmp/install-system
-          echo
-          echo "=== install 出来的目录树 ==="
-          find /tmp/install-system -mindepth 1 | sort
-
-      - name: 打包成用户级插件目录布局
         run: |
           set -euxo pipefail
           STAGE=/tmp/stage
           rm -rf "$STAGE"
           mkdir -p "$STAGE/obs-backgroundremoval"
-
-          # --component UserPlugin 应该已经装到 <prefix>/obs/obs-plugins/<name>/
-          # 直接搬这个子目录到 stage
-          PLUGIN_INSTALL_DIR=$(find /tmp/install-system -path "*/obs/obs-plugins/obs-backgroundremoval" -type d | head -1)
-          if [ -n "$PLUGIN_INSTALL_DIR" ]; then
-            cp -r "$PLUGIN_INSTALL_DIR/." "$STAGE/obs-backgroundremoval/"
-          else
-            echo "❌ 找不到 obs-backgroundremoval install 子目录"
-            find /tmp/install-system -type d | sort
-            exit 1
-          fi
-
+          # prefix 直接设成 stage 子目录，cmake install 会把 .so 装到 bin/64bit/、
+          # data/ 装到 data/，刚好是 OBS 用户级插件约定
+          cmake --install build --component UserPlugin --prefix "$STAGE/obs-backgroundremoval"
+          echo
           echo "=== 打包前目录结构 ==="
           find "$STAGE" -mindepth 1 | sort
 

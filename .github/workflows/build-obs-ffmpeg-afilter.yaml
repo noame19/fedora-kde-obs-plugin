@@ -102,30 +102,37 @@ jobs:
         working-directory: /tmp/build/plugins/obs-ffmpeg-afilter
         run: cmake --build build_x86_64 --config RelWithDebInfo --parallel
 
-      - name: CMake install
+      - name: CMake install（直接装到 stage 子目录）
         working-directory: /tmp/build/plugins/obs-ffmpeg-afilter
-        run: |
-          set -euxo pipefail
-          cmake --install build_x86_64 --config RelWithDebInfo --prefix /tmp/install-system
-          echo
-          echo "=== install 出来的目录树 ==="
-          find /tmp/install-system -mindepth 1 | sort
-
-      - name: 打包成用户级插件目录布局
         run: |
           set -euxo pipefail
           STAGE=/tmp/stage
           rm -rf "$STAGE"
-          mkdir -p "$STAGE/obs-ffmpeg-afilter"
+          mkdir -p "$STAGE/obs-ffmpeg-afilter/bin/64bit"
+          # prefix 直接设成 stage 子目录。obs-ffmpeg-afilter 上游的 CMakeLists
+          # 把 .so 装到 <prefix>/lib64/obs-plugins/、data 装到 <prefix>/share/obs/obs-plugins/<name>/
+          cmake --install build_x86_64 --config RelWithDebInfo --prefix "$STAGE/obs-ffmpeg-afilter"
+          echo
+          echo "=== install 完的目录树 ==="
+          find "$STAGE" -mindepth 1 | sort
 
-          # 找 install 出来的 obs-ffmpeg-afilter 子目录
-          PLUGIN_INSTALL_DIR=$(find /tmp/install-system -path "*/obs/obs-plugins/obs-ffmpeg-afilter" -type d | head -1)
-          if [ -n "$PLUGIN_INSTALL_DIR" ]; then
-            cp -r "$PLUGIN_INSTALL_DIR/." "$STAGE/obs-ffmpeg-afilter/"
+      - name: 重新组织成 OBS 用户级插件目录布局
+        run: |
+          set -euxo pipefail
+          STAGE=/tmp/stage
+          # 找 .so（可能在 lib64/obs-plugins/ 或 obs-plugins/64bit/）
+          SO=$(find "$STAGE" -name "obs-ffmpeg-afilter.so" -type f | head -1)
+          test -n "$SO" || { echo "❌ 找不到 .so"; find "$STAGE" | sort; exit 1; }
+          # 把它移动到标准 bin/64bit/ 位置
+          mkdir -p "$STAGE/obs-ffmpeg-afilter/bin/64bit"
+          mv -v "$SO" "$STAGE/obs-ffmpeg-afilter/bin/64bit/obs-ffmpeg-afilter.so"
+
+          # data 在 share/obs/obs-plugins/<name>/，搬出来到 <name>/ 下
+          DATA_SRC=$(find "$STAGE" -path "*/obs/obs-plugins/obs-ffmpeg-afilter" -type d | head -1)
+          if [ -n "$DATA_SRC" ]; then
+            cp -r "$DATA_SRC/." "$STAGE/obs-ffmpeg-afilter/"
           else
-            echo "❌ 找不到 obs-ffmpeg-afilter install 子目录"
-            find /tmp/install-system -type d | sort
-            exit 1
+            echo "ℹ️ install 没装 data/（只有 .so）"
           fi
 
           echo "=== 打包前目录结构 ==="
