@@ -1,0 +1,142 @@
+name: Build obs-bilibili-stream for Fedora Linux 44
+
+# 在 fedora:44 容器里编译 obs-bilibili-stream（B 站直播 OBS 插件），
+# 编译产物 ABI 100% 匹配用户本地 Fedora 44（libobs.so.30 / ffmpeg 8.x / qt6）。
+#
+# 总仓库 layout：插件源码在 plugins/obs-bilibili-stream/ 子目录。
+# 该插件的 CMakeLists.txt 用 buildspec.json 的 name 字段作为 OUTPUT_NAME，
+# 所以编译出的 .so 是 bilibili-stream-for-obs.so（不是 obs-bilibili-stream.so）。
+# cmake install 没有 UserPlugin 组件，data/locale/ 要从源码拷贝。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on Fedora 44 container
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:44
+    defaults:
+      run:
+        shell: bash
+    env:
+      PLUGIN_SRC: plugins/obs-bilibili-stream
+      PLUGIN_NAME: obs-bilibili-stream
+      SO_NAME: bilibili-stream-for-obs
+    steps:
+      - name: 安装 git（fedora:44 镜像默认没装）
+        run: dnf install -y --setopt=install_weak_deps=False git
+
+      - name: 安装构建依赖
+        run: |
+          set -euxo pipefail
+          dnf install -y --setopt=install_weak_deps=False \
+            cmake gcc-c++ ninja-build pkgconf-pkg-config \
+            obs-studio-devel \
+            libcurl-devel \
+            qt6-qtbase-devel
+
+          test -f /usr/include/obs/obs.h || { echo "❌ 缺 obs.h"; exit 1; }
+          test -f /usr/include/obs/obs-module.h || { echo "❌ 缺 obs-module.h"; exit 1; }
+          test -f /usr/include/curl/curl.h || { echo "❌ 缺 curl.h"; exit 1; }
+          test -f /usr/include/qt6/QtWidgets/QtWidgets || { echo "❌ 缺 Qt6 Widgets"; exit 1; }
+          test -f /usr/include/qt6/QtCore/QtCore || { echo "❌ 缺 Qt6 Core"; exit 1; }
+
+          echo "=== 装上的关键包 ==="
+          rpm -q obs-studio-devel libcurl-devel qt6-qtbase-devel cmake gcc-c++ ninja-build
+
+      - name: CMake configure（用上游 ubuntu-x86_64 preset，ENABLE_FRONTEND_API/ENABLE_QT 默认 ON）
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --preset ubuntu-x86_64 \
+            -DCMAKE_INSTALL_PREFIX=/tmp/install-system
+
+      - name: CMake build
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --build build_x86_64 --config RelWithDebInfo --parallel
+
+      - name: CMake install
+        run: |
+          set -euxo pipefail
+          cd "$PLUGIN_SRC"
+          cmake --install build_x86_64 --config RelWithDebInfo --prefix /tmp/install-system
+          echo
+          echo "=== install 出来的目录树 ==="
+          find /tmp/install-system -mindepth 1 | sort
+
+      - name: 重新打包为用户级插件目录布局
+        run: |
+          set -euxo pipefail
+          STAGE=/tmp/stage
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/$PLUGIN_NAME/bin/64bit" "$STAGE/$PLUGIN_NAME/data/locale"
+
+          # 找编译产物 .so
+          SO=$(find /tmp/install-system -name "${SO_NAME}.so" -type f | head -1)
+          test -n "$SO" || { echo "❌ 找不到 ${SO_NAME}.so"; exit 1; }
+          cp -v "$SO" "$STAGE/$PLUGIN_NAME/bin/64bit/${SO_NAME}.so"
+
+          # data/ 不在 install 路径里，从源码 data/ 直接拷（避免 data/data/ 嵌套）
+          if [ -d "$PLUGIN_SRC/data" ]; then
+            cp -r "$PLUGIN_SRC/data/." "$STAGE/$PLUGIN_NAME/data/"
+          else
+            echo "ℹ️ 源码没有 data/ 目录"
+          fi
+
+          echo "=== 打包前目录结构 ==="
+          find "$STAGE" -mindepth 1 | sort
+
+          tar -C "$STAGE" -czf "${PLUGIN_NAME}-fedora44-x86_64.tar.gz" "$PLUGIN_NAME"
+          ls -la "${PLUGIN_NAME}-fedora44-x86_64.tar.gz"
+
+      - name: 验证打包产物的 ABI（必须匹配 Fedora 44）
+        run: |
+          set -euxo pipefail
+          VERIFY=/tmp/verify
+          rm -rf "$VERIFY" && mkdir -p "$VERIFY"
+          tar -xzf "${PLUGIN_NAME}-fedora44-x86_64.tar.gz" -C "$VERIFY"
+          SO="$VERIFY/$PLUGIN_NAME/bin/64bit/${SO_NAME}.so"
+          test -f "$SO" || { echo "❌ 找不到 .so"; exit 1; }
+          chmod +x "$SO"
+
+          echo "=== DT_NEEDED ==="
+          objdump -p "$SO" | grep -E "NEEDED"
+
+          echo
+          echo "=== ldd 命中检查 ==="
+          ldd "$SO" 2>&1
+
+          echo
+          echo "=== 关键 soname 断言 ==="
+          NEEDED=$(objdump -p "$SO" | awk '/NEEDED/ {print $2}')
+          for lib in libobs.so.30 libobs-frontend-api.so.30 libcurl.so.4; do
+            if echo "$NEEDED" | grep -qx "$lib"; then
+              echo " ✅ $lib 在 DT_NEEDED 中"
+            else
+              echo " ⚠️ $lib 不在 DT_NEEDED（如果代码里实际用到了才需要）"
+            fi
+          done
+
+          if ldd "$SO" 2>&1 | grep -q "not found"; then
+            echo "❌ ldd 发现未命中的库（ABI 不兼容）："
+            ldd "$SO" 2>&1 | grep "not found"
+            exit 1
+          fi
+          echo "✅ ldd 全部命中（ABI 与 Fedora 44 兼容）"
+          echo
+          echo "🎉 全部通过——编译产物 ABI 与 Fedora 44 匹配"
+
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-bilibili-stream-fedora44-x86_64
+          path: obs-bilibili-stream-fedora44-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
