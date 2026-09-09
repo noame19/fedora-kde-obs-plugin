@@ -1,14 +1,18 @@
 name: Build obs-bilibili-stream for Fedora Linux 44
 
-# 在 fedora:44 容器里编译 obs-bilibili-stream（B 站直播 OBS 插件），
-# 编译产物 ABI 100% 匹配用户本地 Fedora 44（libobs.so.30 / ffmpeg 8.x / qt6）。
+# 在 fedora:44 容器里从上游 Zarosmm/obs-bilibili-stream 直接拉最新源码编译，
+# 不依赖本仓库 plugins/obs-bilibili-stream/ 的内容。
 #
-# 总仓库 layout：插件源码在 plugins/obs-bilibili-stream/ 子目录。
-# 该插件的 CMakeLists.txt 用 buildspec.json 的 name 字段作为 OUTPUT_NAME，
-# 所以编译出的 .so 是 bilibili-stream-for-obs.so（不是 obs-bilibili-stream.so）。
-# cmake install 没有 UserPlugin 组件，data/locale/ 要从源码拷贝。
+# 设计要点：
+# - 每次 Run workflow 都 git clone 上游 master 最新 commit（用 --depth 1 加快速度）
+# - 应用一处本地化补丁：buildspec.json 的 name 字段从 bilibili-stream-for-obs
+#   改成 obs-bilibili-stream（让 .so 名匹配目录名，符合 OBS 用户级插件约定）
+# - 编译用上游 ubuntu-x86_64 preset（CMakePresets.json 里 Linux 平台 preset）
+# - 产物 obs-bilibili-stream-fedora44-x86_64.tar.gz 通过 artifact 上传
+# - 含 ldd ABI 校验，确认 libobs.so.30 / libobs-frontend-api.so.30 / libcurl.so.4
+#   / libQt6*.so.6 全部命中本机 Fedora 44 系统的 /lib64/
 
-"on":
+on:
   workflow_dispatch:
 
 permissions:
@@ -23,18 +27,46 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      PLUGIN_SRC: plugins/obs-bilibili-stream
-      PLUGIN_NAME: obs-bilibili-stream
-      SO_NAME: obs-bilibili-stream
     steps:
       - name: 安装 git（fedora:44 镜像默认没装）
         run: dnf install -y --setopt=install_weak_deps=False git
 
-      - name: 拉取源码
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - name: 拉取上游源码到容器内（不接触本仓库 plugins/ 目录）
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/upstream /tmp/build
+          git clone --depth 1 https://github.com/Zarosmm/obs-bilibili-stream.git /tmp/upstream
+          echo "=== 上游 HEAD ==="
+          git -C /tmp/upstream log -1 --oneline
+          mkdir -p /tmp/build/plugins
+          # 拷贝源码到构建目录，排除 .git 和 .github
+          cp -r /tmp/upstream /tmp/build/plugins/obs-bilibili-stream
+          rm -rf /tmp/build/plugins/obs-bilibili-stream/.git
+          rm -rf /tmp/build/plugins/obs-bilibili-stream/.github
+
+      - name: 应用本地化补丁：buildspec.name 改成 obs-bilibili-stream
+        run: |
+          set -euxo pipefail
+          PLUGIN_DIR=/tmp/build/plugins/obs-bilibili-stream
+          cd "$PLUGIN_DIR"
+          # dnf 安装依赖时一起装了 python3，用 python3 内置 json 安全地改字段
+          python3 - <<'PYEOF'
+          import json
+          from collections import OrderedDict
+          path = 'buildspec.json'
+          with open(path, 'r', encoding='utf-8-sig') as f:
+              data = json.load(f, object_pairs_hook=OrderedDict)
+          old = data.get('name')
+          if old != 'obs-bilibili-stream':
+              print(f"buildspec.name: {old!r} -> 'obs-bilibili-stream'")
+              data['name'] = 'obs-bilibili-stream'
+              with open(path, 'w', encoding='utf-8') as f:
+                  json.dump(data, f, indent=4, ensure_ascii=False)
+                  f.write('\n')
+          else:
+              print("buildspec.name 已经是 obs-bilibili-stream，跳过")
+          PYEOF
+          grep '"name"' buildspec.json
 
       - name: 安装构建依赖
         run: |
@@ -43,7 +75,8 @@ jobs:
             cmake gcc-c++ ninja-build pkgconf-pkg-config \
             obs-studio-devel \
             libcurl-devel \
-            qt6-qtbase-devel
+            qt6-qtbase-devel \
+            python3
 
           test -f /usr/include/obs/obs.h || { echo "❌ 缺 obs.h"; exit 1; }
           test -f /usr/include/obs/obs-module.h || { echo "❌ 缺 obs-module.h"; exit 1; }
@@ -52,62 +85,66 @@ jobs:
           test -f /usr/include/qt6/QtCore/QtCore || { echo "❌ 缺 Qt6 Core"; exit 1; }
 
           echo "=== 装上的关键包 ==="
-          rpm -q obs-studio-devel libcurl-devel qt6-qtbase-devel cmake gcc-c++ ninja-build
+          rpm -q obs-studio-devel libcurl-devel qt6-qtbase-devel cmake gcc-c++ ninja-build python3
 
       - name: CMake configure（用上游 ubuntu-x86_64 preset，ENABLE_FRONTEND_API/ENABLE_QT 默认 ON）
+        working-directory: /tmp/build/plugins/obs-bilibili-stream
         run: |
           set -euxo pipefail
-          cd "$PLUGIN_SRC"
           cmake --preset ubuntu-x86_64 \
             -DCMAKE_INSTALL_PREFIX=/tmp/install-system
 
       - name: CMake build
-        run: |
-          set -euxo pipefail
-          cd "$PLUGIN_SRC"
-          cmake --build build_x86_64 --config RelWithDebInfo --parallel
+        working-directory: /tmp/build/plugins/obs-bilibili-stream
+        run: cmake --build build_x86_64 --config RelWithDebInfo --parallel
 
       - name: CMake install
+        working-directory: /tmp/build/plugins/obs-bilibili-stream
         run: |
           set -euxo pipefail
-          cd "$PLUGIN_SRC"
           cmake --install build_x86_64 --config RelWithDebInfo --prefix /tmp/install-system
           echo
           echo "=== install 出来的目录树 ==="
           find /tmp/install-system -mindepth 1 | sort
 
-      - name: 重新打包为用户级插件目录布局
+      - name: 打包成用户级插件目录布局
         run: |
           set -euxo pipefail
           STAGE=/tmp/stage
           rm -rf "$STAGE"
-          mkdir -p "$STAGE/$PLUGIN_NAME/bin/64bit" "$STAGE/$PLUGIN_NAME/data/locale"
+          mkdir -p "$STAGE/obs-bilibili-stream/bin/64bit" "$STAGE/obs-bilibili-stream/data/locale"
 
           # 找编译产物 .so
-          SO=$(find /tmp/install-system -name "${SO_NAME}.so" -type f | head -1)
-          test -n "$SO" || { echo "❌ 找不到 ${SO_NAME}.so"; exit 1; }
-          cp -v "$SO" "$STAGE/$PLUGIN_NAME/bin/64bit/${SO_NAME}.so"
+          SO=$(find /tmp/install-system -name "obs-bilibili-stream.so" -type f | head -1)
+          test -n "$SO" || { echo "❌ 找不到 obs-bilibili-stream.so"; exit 1; }
+          cp -v "$SO" "$STAGE/obs-bilibili-stream/bin/64bit/obs-bilibili-stream.so"
 
-          # data/ 不在 install 路径里，从源码 data/ 直接拷（避免 data/data/ 嵌套）
-          if [ -d "$PLUGIN_SRC/data" ]; then
-            cp -r "$PLUGIN_SRC/data/." "$STAGE/$PLUGIN_NAME/data/"
+          # data/ 拷贝：从上游源码 data/ 直接拷（cmake install 可能不会装所有文件，
+          # 直接从源码拷最稳，避免 data/data/ 嵌套）
+          if [ -d /tmp/upstream/data ]; then
+            cp -r /tmp/upstream/data/. "$STAGE/obs-bilibili-stream/data/"
           else
-            echo "ℹ️ 源码没有 data/ 目录"
+            echo "ℹ️ 上游没有 data/ 目录"
           fi
+
+          # 占位 en-US.ini（即使上游 data/locale/ 没文件也保证 OBS 不报错）
+          mkdir -p "$STAGE/obs-bilibili-stream/data/locale"
+          test -f "$STAGE/obs-bilibili-stream/data/locale/en-US.ini" \
+            || touch "$STAGE/obs-bilibili-stream/data/locale/en-US.ini"
 
           echo "=== 打包前目录结构 ==="
           find "$STAGE" -mindepth 1 | sort
 
-          tar -C "$STAGE" -czf "${PLUGIN_NAME}-fedora44-x86_64.tar.gz" "$PLUGIN_NAME"
-          ls -la "${PLUGIN_NAME}-fedora44-x86_64.tar.gz"
+          tar -C "$STAGE" -czf "obs-bilibili-stream-fedora44-x86_64.tar.gz" "obs-bilibili-stream"
+          ls -la "obs-bilibili-stream-fedora44-x86_64.tar.gz"
 
       - name: 验证打包产物的 ABI（必须匹配 Fedora 44）
         run: |
           set -euxo pipefail
           VERIFY=/tmp/verify
           rm -rf "$VERIFY" && mkdir -p "$VERIFY"
-          tar -xzf "${PLUGIN_NAME}-fedora44-x86_64.tar.gz" -C "$VERIFY"
-          SO="$VERIFY/$PLUGIN_NAME/bin/64bit/${SO_NAME}.so"
+          tar -xzf "obs-bilibili-stream-fedora44-x86_64.tar.gz" -C "$VERIFY"
+          SO="$VERIFY/obs-bilibili-stream/bin/64bit/obs-bilibili-stream.so"
           test -f "$SO" || { echo "❌ 找不到 .so"; exit 1; }
           chmod +x "$SO"
 
@@ -121,11 +158,11 @@ jobs:
           echo
           echo "=== 关键 soname 断言 ==="
           NEEDED=$(objdump -p "$SO" | awk '/NEEDED/ {print $2}')
-          for lib in libobs.so.30 libobs-frontend-api.so.30 libcurl.so.4; do
+          for lib in libobs.so.30 libobs-frontend-api.so.30 libcurl.so.4 libQt6Core.so.6 libQt6Widgets.so.6; do
             if echo "$NEEDED" | grep -qx "$lib"; then
               echo " ✅ $lib 在 DT_NEEDED 中"
             else
-              echo " ⚠️ $lib 不在 DT_NEEDED（如果代码里实际用到了才需要）"
+              echo " ⚠️ $lib 不在 DT_NEEDED"
             fi
           done
 
