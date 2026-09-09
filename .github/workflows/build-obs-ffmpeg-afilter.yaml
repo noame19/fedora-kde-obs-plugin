@@ -99,9 +99,9 @@ jobs:
           # 数据文件（locale 等）。直接定位 <install>/obs/obs-plugins/<plugin>/data 子目录，
           # 把里面的内容（比如 data/locale/zh-CN.ini）原样拷到 $STAGE/<plugin>/data/ 下，
           # 避免出现 $STAGE/<plugin>/data/data/locale/ 这种错位的层级。
-          DATA_SRC=$(find /tmp/install-system -path "*/obs/obs-plugins/$PLUGIN_NAME/data" -type d | head -1)
+          DATA_SRC=$(find /tmp/install-system -path "*/obs/obs-plugins/$PLUGIN_NAME/locale" -type d | head -1)
           if [ -n "$DATA_SRC" ]; then
-            cp -r "$DATA_SRC/." "$STAGE/$PLUGIN_NAME/data/"
+            cp -r "$DATA_SRC" "$STAGE/$PLUGIN_NAME/data/locale"
           else
             echo "ℹ️  install 没产出 data/ 目录，只打包 .so"
           fi
