@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <cstdio>
 #include <functional>
 
 extern "C" {
@@ -37,6 +38,26 @@ static const char *localize_or(const char *key, const char *fallback)
 	const char *translated = obs_module_text(key);
 	if (translated && strcmp(translated, key) != 0)
 		return translated;
+	return fallback;
+}
+
+// ========== tooltip 两级 fallback ==========
+// 同一个参数在不同滤镜下语义可能有差异，所以 ini 优先用"滤镜_参数"细粒度
+// key (Tip_<filter>_<opt>)，找不到再用"全局参数" key (Tip_<opt>)。
+// 这样既支持特例覆盖（如 Tip_replaygain_preamp），也能复用通用翻译。
+// 两级都找不到才 fallback 到 FFmpeg 自带的英文 help。
+static const char *localize_or_tip(const char *filter, const char *opt, const char *fallback)
+{
+	char buf[256];
+	// 第一级：Tip_<filter>_<opt>
+	snprintf(buf, sizeof(buf), "Tip_%s_%s", filter, opt);
+	const char *t1 = obs_module_text(buf);
+	if (t1 && strcmp(t1, buf) != 0)
+		return t1;
+	// 第二级：Tip_<opt>
+	t1 = obs_module_text(opt);
+	if (t1 && strcmp(t1, opt) != 0)
+		return t1;
 	return fallback;
 }
 
@@ -502,8 +523,9 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 						  default_val);
 
 			if (x.help) {
-				std::string tip_key = std::string("Tip_") + filter_name_ + "_" + opt.name + "_" + x.name;
-				obs_property_set_long_description(prop, localize_or(tip_key.c_str(), x.help));
+				// flags 的 tooltip：先查 Tip_<filter>_<opt>_<flag>，再查 Tip_<flag>，再查英文
+				std::string filter_opt_flag = std::string(filter_name_) + "_" + opt.name + "_" + x.name;
+				obs_property_set_long_description(prop, localize_or_tip(filter_opt_flag.c_str(), x.name, x.help));
 			}
 		}
 	};
@@ -572,8 +594,9 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 		}
 
 		if (prop && opt.help) {
-			std::string tip_key = std::string("Tip_") + filter_name_ + "_" + opt.name;
-			obs_property_set_long_description(prop, localize_or(tip_key.c_str(), opt.help));
+			// tooltip：先查 Tip_<filter>_<opt>，再查 Tip_<opt>，再查英文
+			std::string filter_opt = std::string(filter_name_) + "_" + opt.name;
+			obs_property_set_long_description(prop, localize_or_tip(filter_opt.c_str(), opt.name, opt.help));
 		}
 		return true;
 	};
