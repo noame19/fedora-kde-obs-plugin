@@ -501,8 +501,10 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 			obs_data_set_default_bool(settings, flagname.c_str(),
 						  default_val);
 
-			if (x.help)
-				obs_property_set_long_description(prop, x.help);
+			if (x.help) {
+				std::string tip_key = std::string("Tip_") + filter_name_ + "_" + opt.name + "_" + x.name;
+				obs_property_set_long_description(prop, localize_or(tip_key.c_str(), x.help));
+			}
 		}
 	};
 
@@ -569,8 +571,10 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 			     opt.type, optname);
 		}
 
-		if (prop && opt.help)
-			obs_property_set_long_description(prop, opt.help);
+		if (prop && opt.help) {
+			std::string tip_key = std::string("Tip_") + filter_name_ + "_" + opt.name;
+			obs_property_set_long_description(prop, localize_or(tip_key.c_str(), opt.help));
+		}
 		return true;
 	};
 
