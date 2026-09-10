@@ -139,10 +139,10 @@ jobs:
           echo
           echo "🎉 全部通过——编译产物 ABI 与 Fedora 44 匹配"
 
-      - name: 上传 artifact
+      - name: 上传 artifact（绝对路径，actions/upload-artifact 不支持 working-directory）
         uses: actions/upload-artifact@v4
         with:
           name: obs-backgroundremoval-fedora44-x86_64
-          path: obs-backgroundremoval-fedora44-x86_64.tar.gz
+          path: /tmp/build/plugins/obs-backgroundremoval/obs-backgroundremoval-fedora44-x86_64.tar.gz
           if-no-files-found: error
           retention-days: 14
