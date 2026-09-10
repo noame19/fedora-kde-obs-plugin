@@ -102,6 +102,7 @@ jobs:
           ls -la "obs-backgroundremoval-fedora44-x86_64.tar.gz"
 
       - name: 验证打包产物的 ABI（必须匹配 Fedora 44）
+        working-directory: /tmp/build/plugins/obs-backgroundremoval
         run: |
           set -euxo pipefail
           VERIFY=/tmp/verify
