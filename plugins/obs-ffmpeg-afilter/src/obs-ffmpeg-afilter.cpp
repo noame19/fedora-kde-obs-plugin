@@ -49,14 +49,16 @@ static const char *localize_or(const char *key, const char *fallback)
 static const char *localize_or_tip(const char *filter, const char *opt, const char *fallback)
 {
 	char buf[256];
-	// 第一级：Tip_<filter>_<opt>
+	char buf2[256];
+	// 第一级：Tip_<filter>_<opt>（特例覆盖，如 Tip_replaygain_preamp）
 	snprintf(buf, sizeof(buf), "Tip_%s_%s", filter, opt);
 	const char *t1 = obs_module_text(buf);
 	if (t1 && strcmp(t1, buf) != 0)
 		return t1;
-	// 第二级：Tip_<opt>
-	t1 = obs_module_text(opt);
-	if (t1 && strcmp(t1, opt) != 0)
+	// 第二级：Tip_<opt>（通用翻译，对应 zh-CN.ini 里的 Tip_<param> 形式）
+	snprintf(buf2, sizeof(buf2), "Tip_%s", opt);
+	t1 = obs_module_text(buf2);
+	if (t1 && strcmp(t1, buf2) != 0)
 		return t1;
 	return fallback;
 }
