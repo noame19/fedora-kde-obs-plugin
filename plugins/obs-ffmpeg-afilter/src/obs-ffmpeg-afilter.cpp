@@ -28,7 +28,7 @@ extern "C" {
 #define TAG "[ffmpeg-afilter] "
 
 OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("obs-ffmpeg-afilters", "en-US");
+OBS_MODULE_USE_DEFAULT_LOCALE("obs-ffmpeg-afilter", "en-US");
 
 // ========== localization fallback
 // obs_module_text() 找不到 key 时返回 key 自身（会暴露"Filter_volume"之类
