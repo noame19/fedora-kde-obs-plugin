@@ -129,6 +129,56 @@ template<class T> void RegisterFilter()
 	obs_register_source(&info);
 }
 
+// ========== 滤镜下拉项显示顺序（按功能分组 A-L，共 142 个）
+// 与 data/locale/zh-CN.ini 的分组顺序保持一致。
+// OBS 下拉项按这个数组的顺序添加，方便用户按用途快速找到需要的滤镜。
+// 数组外的滤镜会追加在末尾（ffmpeg 注册顺序），保证新增滤镜不被遗漏。
+// 注：新增/删除滤镜时，需要同步更新本表和 ini 文件。
+static const char *const kFilterDisplayOrder[] = {
+    // A. 音量 / 增益
+    "volume", "loudnorm", "dynaudnorm", "speechnorm", "alimiter",
+    "amultiply", "dcshift",
+    // B. 压缩 / 门限 / 压扩
+    "acompressor", "agate", "sidechaincompress", "sidechaingate", "compand",
+    "mcompand", "contrast", "acontrast", "adrc", "adynamicsmooth",
+    // C. 均衡 / 滤波
+    "equalizer", "superequalizer", "firequalizer", "anequalizer", "bass",
+    "treble", "lowpass", "highpass", "bandpass", "bandreject", "biquad",
+    "allpass", "lowshelf", "highshelf", "aiir", "afir", "asubboost",
+    "asubcut", "afftfilt", "afftfilter", "afreqshift", "asoftclip",
+    "tiltshelf", "atilt", "asupercut", "asuperpass", "asuperstop",
+    "crystalizer", "virtualbass",
+    // D. 降噪 / 修复
+    "afftdn", "anlmdn", "arnndn", "deesser", "afwtdn", "anlmf", "anlms",
+    "adeclick", "adeclip",
+    // E. 立体声 / 空间
+    "stereowiden", "extrastereo", "stereotools", "earwax", "haas",
+    "headphone", "surround", "crossfeed", "pan", "channelmap",
+    "channelsplit", "aspatial", "aphasemeter", "bs2b", "sofalizer",
+    // F. 调制 / 颤音
+    "chorus", "flanger", "aphaser", "aphaseshift", "apulsator", "tremolo",
+    "vibrato",
+    // G. 延迟 / 回声 / 混响
+    "aecho", "adelay", "reverb",
+    // H. 失真 / 增强
+    "acrusher", "aexciter", "aemphasis",
+    // I. 混音 / 路由
+    "amix", "amerge", "join", "apad", "asplit", "acrossfade", "feedback",
+    "compensationdelay", "alatency",
+    // J. 格式 / 元数据 / 处理
+    "atempo", "dialoguenhance", "aformat", "aresample", "asetrate",
+    "asettb", "asetpts", "asetnsamples", "aap", "acenterbar", "acrossover",
+    "adenorm", "aderivative", "aintegral", "ainterleave", "asegment",
+    "aselect", "asendcmd", "ashowinfo", "asidedata", "atrim", "hdcd",
+    "ebur128", "drmeter", "adialoguenhance", "adynamicequalizer", "astats",
+    "ahistogram", "asisdr", "adecorrelate", "lv2", "ladspa", "rubberband",
+    // K. 信号源 / 测试
+    "flite", "aevalsrc", "anullsrc", "asine", "afirsrc",
+    // L. 杂项工具
+    "afilter", "acopy", "acue", "aeval", "arealtime", "apsnr", "apsyclip",
+    "aspectralstats", "axcorrelate", "azmq", "arls", "asdr",
+};
+
 // ========== filter list
 class FFAFilterCollection {
 public:
@@ -981,8 +1031,22 @@ obs_properties_t *FFAFilter::properties()
 		obs_combo_type::OBS_COMBO_TYPE_LIST,
 		obs_combo_format::OBS_COMBO_FORMAT_STRING);
 
-	for (auto &x : FFAFilterCollection::Get()) {
-		// 本地化下拉项显示名：先查 Filter_<ffmpeg-name>，找不到用 ffmpeg 原始名
+	// 按 kFilterDisplayOrder 自定义分组顺序添加下拉项
+	auto &collection = FFAFilterCollection::Get();
+	std::set<string> added;  // 已添加的 ffmpeg 名称
+	for (const char *ffmpeg_name : kFilterDisplayOrder) {
+		auto it = collection.find(ffmpeg_name);
+		if (it == collection.end())
+			continue;
+		std::string filter_label_key = std::string("Filter_") + ffmpeg_name;
+		const char *display = localize_or(filter_label_key.c_str(), ffmpeg_name);
+		obs_property_list_add_string(filterlist, display, ffmpeg_name);
+		added.insert(ffmpeg_name);
+	}
+	// 追加未在自定义顺序中的滤镜（ffmpeg 新增滤镜兜底）
+	for (auto &x : collection) {
+		if (added.count(x.first) > 0)
+			continue;
 		const char *ffmpeg_name = x.first.c_str();
 		std::string filter_label_key = std::string("Filter_") + ffmpeg_name;
 		const char *display = localize_or(filter_label_key.c_str(), ffmpeg_name);
